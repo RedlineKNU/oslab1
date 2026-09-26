@@ -1,0 +1,5 @@
+wish
+*.o
+*.dSYM/
+.DS_Store
+tests-out/
