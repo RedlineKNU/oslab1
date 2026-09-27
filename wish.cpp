@@ -48,33 +48,45 @@ static void spawn(const std::vector<std::string>& args) {
     waitpid(pid, nullptr, 0);
 }
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+static void run_line(const std::string& line) {
+    auto toks = tokenize(line);
+    if (toks.empty()) return;
+    if (toks[0] == "exit") {
+        if (toks.size() != 1) { die(); return; }
+        exit(0);
+    }
+    if (toks[0] == "cd") {
+        if (toks.size() != 2 || chdir(toks[1].c_str()) != 0) die();
+        return;
+    }
+    if (toks[0] == "path") {
+        g_path.assign(toks.begin() + 1, toks.end());
+        return;
+    }
+    spawn(toks);
+}
+
+static void run(FILE* in, bool interactive) {
     char* line = nullptr;
     size_t cap = 0;
     while (true) {
-        fputs("wish> ", stdout);
-        fflush(stdout);
-        ssize_t n = getline(&line, &cap, stdin);
+        if (interactive) { fputs("wish> ", stdout); fflush(stdout); }
+        ssize_t n = getline(&line, &cap, in);
         if (n < 0) break;
-        auto toks = tokenize(std::string(line, static_cast<size_t>(n)));
-        if (toks.empty()) continue;
-        if (toks[0] == "exit") {
-            if (toks.size() != 1) { die(); continue; }
-            free(line);
-            return 0;
-        }
-        if (toks[0] == "cd") {
-            if (toks.size() != 2 || chdir(toks[1].c_str()) != 0) die();
-            continue;
-        }
-        if (toks[0] == "path") {
-            g_path.assign(toks.begin() + 1, toks.end());
-            continue;
-        }
-        spawn(toks);
+        run_line(std::string(line, static_cast<size_t>(n)));
     }
     free(line);
-    return 0;
+}
+
+int main(int argc, char** argv) {
+    if (argc == 1) { run(stdin, true); return 0; }
+    if (argc == 2) {
+        FILE* f = fopen(argv[1], "r");
+        if (!f) { die(); return 1; }
+        run(f, false);
+        fclose(f);
+        return 0;
+    }
+    die();
+    return 1;
 }
