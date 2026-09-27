@@ -8,6 +8,8 @@
 static const char kErr[] = "An error has occurred\n";
 static void die() { write(STDERR_FILENO, kErr, sizeof(kErr) - 1); }
 
+static std::vector<std::string> g_path = {"/bin"};
+
 static std::vector<std::string> tokenize(const std::string& s) {
     std::vector<std::string> out;
     std::string cur;
@@ -21,8 +23,12 @@ static std::vector<std::string> tokenize(const std::string& s) {
 }
 
 static std::string resolve(const std::string& name) {
-    std::string full = "/bin/" + name;
-    if (access(full.c_str(), X_OK) == 0) return full;
+    for (const auto& dir : g_path) {
+        std::string full = dir;
+        if (!full.empty() && full.back() != '/') full += '/';
+        full += name;
+        if (access(full.c_str(), X_OK) == 0) return full;
+    }
     return "";
 }
 
@@ -58,6 +64,14 @@ int main(int argc, char** argv) {
             if (toks.size() != 1) { die(); continue; }
             free(line);
             return 0;
+        }
+        if (toks[0] == "cd") {
+            if (toks.size() != 2 || chdir(toks[1].c_str()) != 0) die();
+            continue;
+        }
+        if (toks[0] == "path") {
+            g_path.assign(toks.begin() + 1, toks.end());
+            continue;
         }
         spawn(toks);
     }
