@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <sys/wait.h>
 #include <unistd.h>
 
 static const char kErr[] = "An error has occurred\n";
@@ -17,6 +18,28 @@ static std::vector<std::string> tokenize(const std::string& s) {
     }
     flush();
     return out;
+}
+
+static std::string resolve(const std::string& name) {
+    std::string full = "/bin/" + name;
+    if (access(full.c_str(), X_OK) == 0) return full;
+    return "";
+}
+
+static void spawn(const std::vector<std::string>& args) {
+    std::string full = resolve(args[0]);
+    if (full.empty()) { die(); return; }
+    pid_t pid = fork();
+    if (pid < 0) { die(); return; }
+    if (pid == 0) {
+        std::vector<char*> argv;
+        for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+        argv.push_back(nullptr);
+        execv(full.c_str(), argv.data());
+        die();
+        _exit(1);
+    }
+    waitpid(pid, nullptr, 0);
 }
 
 int main(int argc, char** argv) {
@@ -36,7 +59,7 @@ int main(int argc, char** argv) {
             free(line);
             return 0;
         }
-        die();
+        spawn(toks);
     }
     free(line);
     return 0;
