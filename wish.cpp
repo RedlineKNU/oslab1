@@ -46,11 +46,11 @@ static bool strip_redir(std::vector<std::string>& args, std::string& outfile) {
     return true;
 }
 
-static void spawn(const std::vector<std::string>& args, const std::string& outfile) {
+static pid_t spawn(const std::vector<std::string>& args, const std::string& outfile) {
     std::string full = resolve(args[0]);
-    if (full.empty()) { die(); return; }
+    if (full.empty()) { die(); return -1; }
     pid_t pid = fork();
-    if (pid < 0) { die(); return; }
+    if (pid < 0) { die(); return -1; }
     if (pid == 0) {
         if (!outfile.empty()) {
             int fd = open(outfile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
@@ -66,29 +66,46 @@ static void spawn(const std::vector<std::string>& args, const std::string& outfi
         die();
         _exit(1);
     }
-    waitpid(pid, nullptr, 0);
+    return pid;
 }
 
-static void run_line(const std::string& line) {
-    auto args = tokenize(line);
-    if (args.empty()) return;
+static pid_t run_one(std::vector<std::string> args) {
+    if (args.empty()) return -1;
 
     std::string outfile;
-    if (!strip_redir(args, outfile) || args.empty()) { die(); return; }
+    if (!strip_redir(args, outfile) || args.empty()) { die(); return -1; }
 
     if (args[0] == "exit") {
-        if (args.size() != 1 || !outfile.empty()) { die(); return; }
+        if (args.size() != 1 || !outfile.empty()) { die(); return -1; }
         exit(0);
     }
     if (args[0] == "cd") {
         if (args.size() != 2 || chdir(args[1].c_str()) != 0) die();
-        return;
+        return -1;
     }
     if (args[0] == "path") {
         g_path.assign(args.begin() + 1, args.end());
-        return;
+        return -1;
     }
-    spawn(args, outfile);
+    return spawn(args, outfile);
+}
+
+static void run_line(const std::string& line) {
+    auto toks = tokenize(line);
+    if (toks.empty()) return;
+
+    std::vector<std::vector<std::string>> groups(1);
+    for (auto& t : toks) {
+        if (t == "&") { if (!groups.back().empty()) groups.emplace_back(); }
+        else groups.back().push_back(std::move(t));
+    }
+
+    std::vector<pid_t> pids;
+    for (auto& g : groups) {
+        pid_t pid = run_one(std::move(g));
+        if (pid > 0) pids.push_back(pid);
+    }
+    for (pid_t pid : pids) waitpid(pid, nullptr, 0);
 }
 
 static void run(FILE* in, bool interactive) {
