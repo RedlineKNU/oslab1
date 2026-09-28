@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <fcntl.h>
 #include <string>
 #include <vector>
 #include <sys/wait.h>
@@ -16,6 +17,7 @@ static std::vector<std::string> tokenize(const std::string& s) {
     auto flush = [&] { if (!cur.empty()) { out.push_back(cur); cur.clear(); } };
     for (char c : s) {
         if (c == ' ' || c == '\t' || c == '\n') flush();
+        else if (c == '>') { flush(); out.emplace_back(1, c); }
         else cur.push_back(c);
     }
     flush();
@@ -32,12 +34,31 @@ static std::string resolve(const std::string& name) {
     return "";
 }
 
-static void spawn(const std::vector<std::string>& args) {
+static bool strip_redir(std::vector<std::string>& args, std::string& outfile) {
+    int count = 0;
+    size_t pos = 0;
+    for (size_t i = 0; i < args.size(); ++i)
+        if (args[i] == ">") { ++count; pos = i; }
+    if (count == 0) return true;
+    if (count > 1 || pos == 0 || args.size() - pos != 2) return false;
+    outfile = args[pos + 1];
+    args.resize(pos);
+    return true;
+}
+
+static void spawn(const std::vector<std::string>& args, const std::string& outfile) {
     std::string full = resolve(args[0]);
     if (full.empty()) { die(); return; }
     pid_t pid = fork();
     if (pid < 0) { die(); return; }
     if (pid == 0) {
+        if (!outfile.empty()) {
+            int fd = open(outfile.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) { die(); _exit(1); }
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+            close(fd);
+        }
         std::vector<char*> argv;
         for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
         argv.push_back(nullptr);
@@ -49,21 +70,25 @@ static void spawn(const std::vector<std::string>& args) {
 }
 
 static void run_line(const std::string& line) {
-    auto toks = tokenize(line);
-    if (toks.empty()) return;
-    if (toks[0] == "exit") {
-        if (toks.size() != 1) { die(); return; }
+    auto args = tokenize(line);
+    if (args.empty()) return;
+
+    std::string outfile;
+    if (!strip_redir(args, outfile) || args.empty()) { die(); return; }
+
+    if (args[0] == "exit") {
+        if (args.size() != 1 || !outfile.empty()) { die(); return; }
         exit(0);
     }
-    if (toks[0] == "cd") {
-        if (toks.size() != 2 || chdir(toks[1].c_str()) != 0) die();
+    if (args[0] == "cd") {
+        if (args.size() != 2 || chdir(args[1].c_str()) != 0) die();
         return;
     }
-    if (toks[0] == "path") {
-        g_path.assign(toks.begin() + 1, toks.end());
+    if (args[0] == "path") {
+        g_path.assign(args.begin() + 1, args.end());
         return;
     }
-    spawn(toks);
+    spawn(args, outfile);
 }
 
 static void run(FILE* in, bool interactive) {
