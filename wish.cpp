@@ -1,16 +1,20 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <string>
 #include <vector>
 #include <sys/wait.h>
 #include <unistd.h>
 
+// Unified error message written to stderr; the shell does not exit after this.
 static const char kErr[] = "An error has occurred\n";
 static void die() { write(STDERR_FILENO, kErr, sizeof(kErr) - 1); }
 
+// Search path for external executables. Overwritten by the `path` built-in.
 static std::vector<std::string> g_path = {"/bin"};
 
+// Split into whitespace-separated tokens; '>' and '&' are always standalone.
 static std::vector<std::string> tokenize(const std::string& s) {
     std::vector<std::string> out;
     std::string cur;
@@ -24,6 +28,7 @@ static std::vector<std::string> tokenize(const std::string& s) {
     return out;
 }
 
+// Find `name` in the search path; returns the full path or "" if not executable.
 static std::string resolve(const std::string& name) {
     for (const auto& dir : g_path) {
         std::string full = dir;
@@ -34,6 +39,7 @@ static std::string resolve(const std::string& name) {
     return "";
 }
 
+// Strip trailing "> file"; false on syntax error.
 static bool strip_redir(std::vector<std::string>& args, std::string& outfile) {
     int count = 0;
     size_t pos = 0;
@@ -46,6 +52,9 @@ static bool strip_redir(std::vector<std::string>& args, std::string& outfile) {
     return true;
 }
 
+// Fork and exec an external command. If `outfile` is non-empty, the child's
+// stdout and stderr are redirected to that file (truncated). Returns the
+// child pid, or -1 if nothing was launched (error already reported).
 static pid_t spawn(const std::vector<std::string>& args, const std::string& outfile) {
     std::string full = resolve(args[0]);
     if (full.empty()) { die(); return -1; }
@@ -69,6 +78,7 @@ static pid_t spawn(const std::vector<std::string>& args, const std::string& outf
     return pid;
 }
 
+// Run one command; returns pid to wait on, or -1 for built-ins / errors.
 static pid_t run_one(std::vector<std::string> args) {
     if (args.empty()) return -1;
 
@@ -90,6 +100,8 @@ static pid_t run_one(std::vector<std::string> args) {
     return spawn(args, outfile);
 }
 
+// Tokenize a line, split it on '&' into parallel groups, launch each command,
+// then wait for all spawned children to finish.
 static void run_line(const std::string& line) {
     auto toks = tokenize(line);
     if (toks.empty()) return;
@@ -108,6 +120,8 @@ static void run_line(const std::string& line) {
     for (pid_t pid : pids) waitpid(pid, nullptr, 0);
 }
 
+// Main read loop. In interactive mode prints the "wish> " prompt each
+// iteration; in batch mode reads silently. Returns on EOF.
 static void run(FILE* in, bool interactive) {
     char* line = nullptr;
     size_t cap = 0;
