@@ -3,3 +3,4 @@ wish
 *.dSYM/
 .DS_Store
 tests-out/
+ostep-projects/
