@@ -17,7 +17,7 @@ static std::vector<std::string> tokenize(const std::string& s) {
     auto flush = [&] { if (!cur.empty()) { out.push_back(cur); cur.clear(); } };
     for (char c : s) {
         if (c == ' ' || c == '\t' || c == '\n') flush();
-        else if (c == '>') { flush(); out.emplace_back(1, c); }
+        else if (c == '>' || c == '&') { flush(); out.emplace_back(1, c); }
         else cur.push_back(c);
     }
     flush();
