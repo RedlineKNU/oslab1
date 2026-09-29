@@ -19,7 +19,10 @@ make
 
 ## Тести
 
-Офіційний набір OSTEP (`processes-shell/test-wish.sh`) — 22/22 passed.
+Офіційний набір OSTEP (`processes-shell/test-wish.sh`) — 22/22.
+
+<img width="444" height="322" alt="image" src="https://github.com/user-attachments/assets/dd02f4b8-823e-4035-9c84-6d0b39162180" />
+
 
 ## Використання AI
 
